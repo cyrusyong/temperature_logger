@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdatomic.h>
+#include <stdint.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,6 +45,32 @@
 I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
+
+// Status Register
+const uint8_t status_reg = 0xF3;
+
+// Temperature Result Register (msb, lsb, xlsb) 0xFA - 0xFC
+const uint8_t temp_res = 0xFA;
+
+// Pressure Result Register
+const uint8_t press_res = 0xF7;
+
+// Humidity Result Register
+const uint8_t hum_res = 0xFD;
+
+// Temperature + Pressure Config
+const uint8_t tp_config_reg = 0xF4;
+const uint8_t osrs_t = 0x001;
+const uint8_t osrs_p = 0x001;
+const uint8_t mode = 0x01;
+
+const uint8_t ctrl_meas = (osrs_t << 5) | (osrs_p << 2) | mode;
+
+// Humidity Config
+const uint8_t h_config_reg = 0xF2;
+const uint8_t osrs_h = 0x001;
+
+const uint8_t ctrl_hum = 0x00000 | osrs_h;
 
 /* USER CODE END PV */
 
