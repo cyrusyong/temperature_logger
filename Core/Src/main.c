@@ -33,7 +33,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define DEBOUNCE_MS 100
+#define MAX_DELAY 10 // True max is 8.725ms
 
+#define ERROR -1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -44,33 +47,31 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
+SPI_HandleTypeDef hspi2;
+
+UART_HandleTypeDef huart2;
+
 /* USER CODE BEGIN PV */
 
-// Status Register
-const uint8_t status_reg = 0xF3;
+// --- BME280 CONFIG ---
 
-// Temperature Result Register (msb, lsb, xlsb) 0xFA - 0xFC
-const uint8_t temp_res = 0xFA;
+// Device Address 
+const uint8_t bme_addr = 0x76 << 1;
 
-// Pressure Result Register
-const uint8_t press_res = 0xF7;
+// Results
+uint8_t result_buf[8];
 
-// Humidity Result Register
-const uint8_t hum_res = 0xFD;
+// API Config
+struct bme280_dev bme_dev;
+struct bme280_settings bme_settings;
+struct bme280_data bme_data;
 
-// Temperature + Pressure Config
-const uint8_t tp_config_reg = 0xF4;
-const uint8_t osrs_t = 0x001;
-const uint8_t osrs_p = 0x001;
-const uint8_t mode = 0x01;
+// --- GPIO CONFIG ---
+volatile uint8_t button_pressed = 0;
 
-const uint8_t ctrl_meas = (osrs_t << 5) | (osrs_p << 2) | mode;
+volatile uint32_t current_time = 0;
+volatile uint32_t last_click_time = 0;
 
-// Humidity Config
-const uint8_t h_config_reg = 0xF2;
-const uint8_t osrs_h = 0x001;
-
-const uint8_t ctrl_hum = 0x00000 | osrs_h;
 
 /* USER CODE END PV */
 
@@ -78,12 +79,41 @@ const uint8_t ctrl_hum = 0x00000 | osrs_h;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_USART2_UART_Init(void);
+static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
 
+int8_t read_data(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr);
+int8_t write_data(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, void *intf_ptr);
+void bme_delay(uint32_t period, void *intf_ptr);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+int8_t read_data(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr) {
+  HAL_StatusTypeDef status = HAL_I2C_Mem_Read(&hi2c1, bme_addr, reg_addr, I2C_MEMADD_SIZE_8BIT, reg_data, len, 100);
+
+  if (status == HAL_OK) {
+    return BME280_INTF_RET_SUCCESS;
+  } else {
+    return ERROR;
+  }
+}
+
+int8_t write_data(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, void *intf_ptr) {
+  HAL_StatusTypeDef status = HAL_I2C_Mem_Write(&hi2c1, bme_addr, reg_addr, I2C_MEMADD_SIZE_8BIT, (uint8_t *) reg_data, len, 100);
+
+  if (status == HAL_OK) {
+    return BME280_INTF_RET_SUCCESS;
+  } else {
+    return ERROR;
+  }
+}
+
+void bme_delay(uint32_t period, void *intf_ptr) {
+  HAL_Delay((period / 1000) + 1);
+}
 
 /* USER CODE END 0 */
 
@@ -117,7 +147,34 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
+  MX_USART2_UART_Init();
+  MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
+
+  // Initialize Sensor
+  bme_dev.intf = BME280_I2C_INTF;
+  bme_dev.read = read_data;
+  bme_dev.write = write_data;
+  bme_dev.delay_us = bme_delay;
+
+  int8_t init_resp = bme280_init(&bme_dev);
+
+  if (init_resp != BME280_OK) {
+    Error_Handler();
+  }
+
+  // Configure Sensor Settings
+  bme_settings.osr_h = BME280_OVERSAMPLING_1X;
+  bme_settings.osr_p = BME280_OVERSAMPLING_1X;
+  bme_settings.osr_t = BME280_OVERSAMPLING_1X;
+  bme_settings.filter = BME280_FILTER_COEFF_OFF;
+
+  uint8_t settings_sel = BME280_SEL_OSR_PRESS | BME280_SEL_OSR_TEMP | BME280_SEL_OSR_HUM | BME280_SEL_FILTER;
+  int8_t settings_resp = bme280_set_sensor_settings(settings_sel, &bme_settings, &bme_dev);
+
+  if (settings_resp != BME280_OK) {
+    Error_Handler();
+  }
 
   /* USER CODE END 2 */
 
@@ -128,6 +185,14 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    if (button_pressed == 1) {
+      button_pressed = 0;
+
+      bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &bme_dev);
+      HAL_Delay(MAX_DELAY);
+      bme280_get_sensor_data(BME280_ALL, &bme_data, &bme_dev);
+
+    }
   }
   /* USER CODE END 3 */
 }
@@ -214,6 +279,77 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_128;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -232,6 +368,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
@@ -240,13 +379,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : USART_TX_Pin USART_RX_Pin */
-  GPIO_InitStruct.Pin = USART_TX_Pin|USART_RX_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  /*Configure GPIO pin : CS_Pin */
+  GPIO_InitStruct.Pin = CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(CS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
@@ -255,12 +393,29 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+  current_time = HAL_GetTick();
+
+  if (GPIO_Pin == B1_Pin) {
+    if (current_time - last_click_time > DEBOUNCE_MS) {
+      button_pressed = 1;
+      last_click_time = current_time;
+
+      HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    }
+
+  }
+}
 
 /* USER CODE END 4 */
 
