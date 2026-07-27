@@ -16,6 +16,7 @@
 #define CMD_55 0x37
 #define ACMD41_CMD 0x29
 #define ACMD41_ARG 0x40000000
+#define CMD_58 0x3A
 #define MAX_RETRIES 20
 
 uint8_t tx = 0xFF;
@@ -142,6 +143,37 @@ DSTATUS SD_Init(SPI_HandleTypeDef *hspi) {
         }
     }
 
+    if (rx != 0x00) {
+        status = STA_NOINIT;
+        return status;
+    }
+
+    // Send CMD58
+
+    uint8_t r3[4];
+
+    SD_SendCommand(hspi, CMD_58, STUFF_BITS, 0x01);
+    status = SD_WaitResponse(hspi, &rx, MAX_RETRIES);
+
+    // Check for errors, 0x00 because card no longer idle, its been initialized.
+    if (rx != 0x00) {
+        status = STA_NOINIT;
+        return status;
+    } else {
+        // Push out OCR
+        for (int i = 0; i < 4; i++) {
+            HAL_SPI_TransmitReceive(hspi, &tx, &r3[i], 1, 100);
+        }
+    }
+
+    // Check CCS bit
+    uint8_t CCS_bit = r3[0] & 0x40;
+
+    if (CCS_bit == 0x40) {
+        // High capacity, use block addressing 
+    } else {
+        // Standard, use byte addressing
+    }
 
     return status;
 }
