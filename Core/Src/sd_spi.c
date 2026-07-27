@@ -13,6 +13,9 @@
 #define CMD_8 0x08
 #define CMD_8_ARG 0x000001AA
 #define CMD_8_CRC 0x87
+#define CMD_55 0x37
+#define ACMD41_CMD 0x29
+#define ACMD41_ARG 0x40000000
 #define MAX_RETRIES 20
 
 uint8_t tx = 0xFF;
@@ -60,6 +63,9 @@ void SD_SendCommand(SPI_HandleTypeDef *hspi, uint8_t cmd, uint32_t arg, uint8_t 
 
 DSTATUS SD_Init(SPI_HandleTypeDef *hspi) {
 
+    uint8_t rx;
+    DSTATUS status;
+
     // Power up
     HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, 1);
 
@@ -70,10 +76,6 @@ DSTATUS SD_Init(SPI_HandleTypeDef *hspi) {
 
     // CS Asserted
     HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, 0);
-
-    // Send CMD0 with CS Asserted
-    uint8_t rx;
-    DSTATUS status;
 
     SD_SendCommand(hspi, CMD_0, STUFF_BITS, CMD_0_CRC);
     status = SD_WaitResponse(hspi, &rx, MAX_RETRIES);
@@ -88,13 +90,18 @@ DSTATUS SD_Init(SPI_HandleTypeDef *hspi) {
 
     // Send CMD8
     uint8_t r7[4];
+
     SD_SendCommand(hspi, CMD_8, CMD_8_ARG, CMD_8_CRC);
     status = SD_WaitResponse(hspi, &rx, MAX_RETRIES);
+
+    // Check for idle status + no errors
 
     if (rx != 0x01) {
         status = STA_NOINIT;
         return status;
     } else {
+
+        // Shift out R7
         rx = 0x00;
         for (int i = 0; i < 4; i++) {
             HAL_SPI_TransmitReceive(hspi, &tx, &r7[i], 1, 100);
@@ -104,10 +111,37 @@ DSTATUS SD_Init(SPI_HandleTypeDef *hspi) {
     uint8_t voltage = r7[2];
     uint8_t check_pattern = r7[3];
 
+    // Check if voltage and check pattern is echo'd back exactly
     if (voltage != 0x01 || check_pattern != 0xAA) {
         status = STA_NOINIT;
         return status;
     }
+
+
+    // --- ACMD41 LOOP ---
+
+    for (int i = 0; i < MAX_RETRIES; i++) {
+         // Send CMD55 to enable application commands
+        SD_SendCommand(hspi, CMD_55, STUFF_BITS, 0x01);
+        status = SD_WaitResponse(hspi, &rx, MAX_RETRIES);
+
+        // Check for errors
+        if (rx != 0x01) {
+            status = STA_NOINIT;
+            return status;
+        }
+
+        // Send ACMD41 until rx is set to 0x00. 
+        SD_SendCommand(hspi, ACMD41_CMD, ACMD41_ARG, 0x01);
+        status = SD_WaitResponse(hspi, &rx, MAX_RETRIES);
+
+        // Check if rx is 0x00
+        if (rx == 0x00) {
+            // Card is initialized
+            break;
+        }
+    }
+
 
     return status;
 }
