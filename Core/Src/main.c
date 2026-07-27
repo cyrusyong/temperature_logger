@@ -18,12 +18,15 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+#include "bme280.h"
+#include "bme280_defs.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -149,10 +152,12 @@ int main(void)
   MX_I2C1_Init();
   MX_USART2_UART_Init();
   MX_SPI2_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
 
   // Initialize Sensor
   bme_dev.intf = BME280_I2C_INTF;
+  bme_dev.intf_ptr = (void *)&bme_addr;
   bme_dev.read = read_data;
   bme_dev.write = write_data;
   bme_dev.delay_us = bme_delay;
@@ -176,6 +181,9 @@ int main(void)
     Error_Handler();
   }
 
+  FATFS fs;
+  volatile FRESULT res = f_mount(&fs, "", 1);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -191,6 +199,7 @@ int main(void)
       bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &bme_dev);
       HAL_Delay(MAX_DELAY);
       bme280_get_sensor_data(BME280_ALL, &bme_data, &bme_dev);
+
 
     }
   }
