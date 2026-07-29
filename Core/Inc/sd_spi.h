@@ -4,6 +4,7 @@
 
 // Send command
 
+#include "diskio.h"
 #include "stm32f4xx_hal_spi.h"
 #include <stdint.h>
 
@@ -35,3 +36,13 @@ void SD_SendCommand(SPI_HandleTypeDef *hspi, uint8_t cmd, uint32_t arg, uint8_t 
  */
 DSTATUS SD_Init(SPI_HandleTypeDef *hspi);
 
+/**
+ * @brief Reads one or more sectors on SD Card
+ * 
+ * @param hspi SPI Handler
+ * @param buff Pointer to the buffer that needs to be filled with read data for FATFS to use
+ * @param sector Sector on the SD Card that FATFS wants to read
+ * @param count The number of sectors to read
+ * @return DRESULT Result of read operation
+ */
+DRESULT SD_Read(SPI_HandleTypeDef *hspi, const BYTE *buff, DWORD sector, UINT count);

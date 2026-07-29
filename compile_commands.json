@@ -1,6 +1,6 @@
 [
   {
-    "file": "Core/Src/sd_spi.c",
+    "file": "Core/Src/main.c",
     "arguments": [
       "/opt/homebrew/bin/arm-none-eabi-gcc",
       "-c",
@@ -26,13 +26,13 @@
       "-gdwarf-2",
       "-MMD",
       "-MP",
-      "-MFbuild/sd_spi.d",
-      "-Wa,-a,-ad,-alms=build/sd_spi.lst",
-      "Core/Src/sd_spi.c",
+      "-MFbuild/main.d",
+      "-Wa,-a,-ad,-alms=build/main.lst",
+      "Core/Src/main.c",
       "-o",
-      "build/sd_spi.o"
+      "build/main.o"
     ],
     "directory": "/Users/cyrus/STM32Cube/TEMP_LOGGER",
-    "output": "build/sd_spi.o"
+    "output": "build/main.o"
   }
 ]

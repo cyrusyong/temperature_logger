@@ -119,7 +119,7 @@ DRESULT USER_read (
 )
 {
   /* USER CODE BEGIN READ */
-    return RES_OK;
+    Stat = SD_Read(&hspi2, buff, sector, count);
   /* USER CODE END READ */
 }
 

@@ -2,6 +2,7 @@
 #include <string.h>
 #include "main.h"
 #include "stm32f4xx.h"
+#include "stm32f4xx_hal.h"
 #include "stm32f4xx_hal_def.h"
 #include "stm32f4xx_hal_gpio.h"
 #include "stm32f4xx_hal_spi.h"
@@ -13,6 +14,7 @@
 #define CMD_8 0x08
 #define CMD_8_ARG 0x000001AA
 #define CMD_8_CRC 0x87
+#define CMD_17 0x11
 #define CMD_55 0x37
 #define ACMD41_CMD 0x29
 #define ACMD41_ARG 0x40000000
@@ -176,4 +178,53 @@ DSTATUS SD_Init(SPI_HandleTypeDef *hspi) {
     }
 
     return status;
+}
+
+DRESULT SD_Read(SPI_HandleTypeDef *hspi, BYTE* buff, DWORD sector, UINT count) {
+
+    uint8_t rx;
+    DRESULT status;
+
+    for (int i = 0; i < count; i++) {
+        // Send CMD17
+        SD_SendCommand(hspi, CMD_17, sector + i, 0x01);
+        status = SD_WaitResponse(hspi, &rx, MAX_RETRIES);
+
+        // Check for errors
+        if (rx != 0x00) {
+            status = RES_ERROR;
+            return status;
+        }
+
+        // Wait (usually 100ms) until first byte start block is received (0xFE), then data is ready. 
+        uint32_t start_time = HAL_GetTick();
+
+        while (HAL_GetTick() - start_time < 100) {
+            HAL_SPI_TransmitReceive(hspi, &tx, &rx, 1, 100);
+            
+            if (rx == 0xFE) {
+                break;
+            }
+        }
+
+        if (rx != 0xFE) {
+            status = RES_ERROR;
+            return status;
+        }
+
+        // Put the 512 Bytes into the buffer and repeat
+        uint8_t dummy_buf[512];
+        memset(dummy_buf, 0xFF, sizeof(dummy_buf));
+
+        HAL_SPI_TransmitReceive(hspi, dummy_buf, buff + (i * 512), 512, 100);
+
+        // Discard last two bytes of CRC
+        uint8_t crc[2];
+        memset(crc, 0xFF, sizeof(crc));
+
+        HAL_SPI_Transmit(hspi, crc, 2, 100);
+    }
+
+    return RES_OK;
+    
 }
