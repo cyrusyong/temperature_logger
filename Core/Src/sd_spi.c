@@ -44,6 +44,7 @@ DSTATUS SD_WaitResponse(SPI_HandleTypeDef *hspi, uint8_t *response, uint16_t max
 }
 
 void SD_SendCommand(SPI_HandleTypeDef *hspi, uint8_t cmd, uint32_t arg, uint8_t crc) {
+    HAL_Delay(10);
 
     // CS toggle between commands
     HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, 1);
