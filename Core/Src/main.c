@@ -18,17 +18,16 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "cmsis_gcc.h"
 #include "fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include "bme280.h"
 #include "bme280_defs.h"
 #include "ff.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -76,6 +75,14 @@ volatile uint8_t button_pressed = 0;
 
 volatile uint32_t current_time = 0;
 volatile uint32_t last_click_time = 0;
+
+// -- FATFS --
+FATFS fs;
+FIL file;
+FRESULT res;
+UINT bytes_written;
+
+char buf[64];
 
 
 /* USER CODE END PV */
@@ -183,17 +190,16 @@ int main(void)
     Error_Handler();
   }
 
-  FATFS fs;
-  volatile FRESULT res = f_mount(&fs, "", 1);
+  // Mount SD Card
+  res = f_mount(&fs, "", 1);
 
-  // --- SD Write Test ---
-  FIL file;
-  UINT bytes_written;
-  char write_buf[] = "SD write test OK PRIM\r\n";
+  if (res != FR_OK) {
+    Error_Handler();
+  }
 
-  FRESULT fres = f_open(&file, "test.txt", FA_WRITE | FA_CREATE_ALWAYS);
-  if (fres == FR_OK) {
-    f_write(&file, write_buf, strlen(write_buf), &bytes_written);
+  // Write CSV header only if file doesn't exist yet
+  if (f_open(&file, "log.csv", FA_WRITE | FA_CREATE_NEW) == FR_OK) {
+    f_write(&file, "temperature_c,pressure_hpa,humidity_pct\r\n", 41, &bytes_written);
     f_close(&file);
   }
 
@@ -213,7 +219,14 @@ int main(void)
       HAL_Delay(MAX_DELAY);
       bme280_get_sensor_data(BME280_ALL, &bme_data, &bme_dev);
 
-
+      int len = snprintf(buf, sizeof(buf), "%.2f,%.2f,%.2f\r\n",
+                         bme_data.temperature,
+                         bme_data.pressure / 100.0,
+                         bme_data.humidity);
+      if (f_open(&file, "log.csv", FA_WRITE | FA_OPEN_APPEND) == FR_OK) {
+        f_write(&file, buf, len, &bytes_written);
+        f_close(&file);
+      }
     }
   }
   /* USER CODE END 3 */
