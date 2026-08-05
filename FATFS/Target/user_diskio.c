@@ -120,6 +120,7 @@ DRESULT USER_read (
 {
   /* USER CODE BEGIN READ */
     Stat = SD_Read(&hspi2, buff, sector, count);
+    return Stat;
   /* USER CODE END READ */
 }
 
@@ -141,7 +142,8 @@ DRESULT USER_write (
 {
   /* USER CODE BEGIN WRITE */
   /* USER CODE HERE */
-    return RES_OK;
+  Stat = SD_Write(&hspi2, buff, sector, count);
+  return Stat;
   /* USER CODE END WRITE */
 }
 #endif /* _USE_WRITE == 1 */

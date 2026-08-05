@@ -46,3 +46,14 @@ DSTATUS SD_Init(SPI_HandleTypeDef *hspi);
  * @return DRESULT Result of read operation
  */
 DRESULT SD_Read(SPI_HandleTypeDef *hspi, const BYTE *buff, DWORD sector, UINT count);
+
+/**
+ * @brief Write one sector into the SD card
+ * 
+ * @param hspi SPI Handler
+ * @param buff Pointer to the buffer containing data to be written
+ * @param sector Sector on SD card that FATFS wants to write to
+ * @param count The number of sectors to write to
+ * @return DRESULT Result of write operation
+ */
+DRESULT SD_Write (SPI_HandleTypeDef *hspi, const BYTE *buff, DWORD sector, UINT count);

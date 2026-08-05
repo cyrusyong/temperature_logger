@@ -186,6 +186,17 @@ int main(void)
   FATFS fs;
   volatile FRESULT res = f_mount(&fs, "", 1);
 
+  // --- SD Write Test ---
+  FIL file;
+  UINT bytes_written;
+  char write_buf[] = "SD write test OK PRIM\r\n";
+
+  FRESULT fres = f_open(&file, "test.txt", FA_WRITE | FA_CREATE_ALWAYS);
+  if (fres == FR_OK) {
+    f_write(&file, write_buf, strlen(write_buf), &bytes_written);
+    f_close(&file);
+  }
+
   /* USER CODE END 2 */
 
   /* Infinite loop */

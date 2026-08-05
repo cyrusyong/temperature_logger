@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <string.h>
+#include "cmsis_gcc.h"
 #include "main.h"
 #include "stm32f4xx.h"
 #include "stm32f4xx_hal.h"
@@ -15,6 +16,7 @@
 #define CMD_8_ARG 0x000001AA
 #define CMD_8_CRC 0x87
 #define CMD_17 0x11
+#define CMD_24 0x18
 #define CMD_55 0x37
 #define ACMD41_CMD 0x29
 #define ACMD41_ARG 0x40000000
@@ -44,13 +46,15 @@ DSTATUS SD_WaitResponse(SPI_HandleTypeDef *hspi, uint8_t *response, uint16_t max
 }
 
 void SD_SendCommand(SPI_HandleTypeDef *hspi, uint8_t cmd, uint32_t arg, uint8_t crc) {
-    HAL_Delay(10);
 
     // CS toggle between commands
     HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, 1);
     HAL_SPI_Transmit(hspi, &tx, 1, 100);
+    HAL_Delay(10);
     HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, 0);
     HAL_SPI_Transmit(hspi, &tx, 1, 100);
+
+    HAL_Delay(10);
 
     // Must be sent in BE, STM32 sends in LE. Put MSB at the front of cmd frame
     uint8_t cmd_frame[6];
@@ -228,4 +232,58 @@ DRESULT SD_Read(SPI_HandleTypeDef *hspi, BYTE* buff, DWORD sector, UINT count) {
 
     return RES_OK;
     
+}
+
+DRESULT SD_Write(SPI_HandleTypeDef *hspi, const BYTE *buff, DWORD sector, UINT count) {
+    
+    DSTATUS status;
+    HAL_StatusTypeDef SPI_status;
+    uint8_t r1;
+
+    // Send CMD 24
+    SD_SendCommand(hspi, CMD_24, sector, 0x01);
+    status = SD_WaitResponse(hspi, &r1, MAX_RETRIES);
+
+    // Check for errors in R1
+    if (r1 != 0x00) {
+        status = RES_ERROR;
+        return status;
+    }
+
+    // Transmit Data
+
+    uint8_t data[515];
+    memset(data, 0xFE, 1);
+    memcpy(data + 1, buff, 512);
+    data[513] = 0xFF;
+    data[514] = 0xFF;
+
+    SPI_status = HAL_SPI_Transmit(hspi, data, 515, 500);
+
+    if (SPI_status != 0x00) {
+        status = HAL_ERROR;
+        return status;
+    }
+
+    // Wait for data response token
+    uint8_t rx;
+
+    SPI_status = HAL_SPI_TransmitReceive(hspi, &tx, &rx, 1, 100);
+
+    if (SPI_status != 0x00) {
+        status = HAL_ERROR;
+        return status;
+    }
+
+    if ((rx & 0x1F) != 0x05) {
+        status = RES_ERROR;
+        return status;
+    }
+
+    // wait for busy bit
+    do {
+        HAL_SPI_TransmitReceive(hspi, &tx, &rx, 1, 100);
+    } while (rx != 0xFF);
+
+    return RES_OK;
 }
